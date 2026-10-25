@@ -1,0 +1,58 @@
+{
+  "protocol_version": 1,
+  "id": "weixin",
+  "name": { "en": "WeChat", "zh": "微信" },
+  "description": { "en": "WeChat bot channel, logged in with a QR code", "zh": "微信机器人渠道，扫码登录" },
+  "command": ["node", "dist/index.js"],
+  "setup": {
+    "command": ["node", "dist/setup.js"],
+    "label": { "en": "WeChat QR code login", "zh": "微信扫码登录" }
+  },
+  "config": [
+    {
+      "key": "token",
+      "type": "secret",
+      "required": true,
+      "label": { "en": "Bot token", "zh": "Bot Token" },
+      "help": {
+        "en": "Filled in by the QR code login; enter it by hand only if the login failed",
+        "zh": "扫码登录后自动填写；仅在扫码失败时手动填写"
+      }
+    },
+    {
+      "key": "base_url",
+      "type": "string",
+      "default": "https://ilinkai.weixin.qq.com",
+      "label": { "en": "API server URL (advanced)", "zh": "API 服务地址（高级）" },
+      "help": {
+        "en": "Filled in by the QR code login; change only for a reverse proxy or tests",
+        "zh": "扫码登录后自动填写；仅在使用反向代理或测试时修改"
+      }
+    },
+    {
+      "key": "cdn_base_url",
+      "type": "string",
+      "default": "https://novac2c.cdn.weixin.qq.com/c2c",
+      "label": { "en": "CDN server URL (advanced)", "zh": "CDN 服务地址（高级）" },
+      "help": {
+        "en": "Used for pictures, voice, videos and files; change only for a reverse proxy or tests",
+        "zh": "用于收发图片、语音、视频和文件；仅在使用反向代理或测试时修改"
+      }
+    },
+    {
+      "key": "route_tag",
+      "type": "int",
+      "label": { "en": "Route tag (advanced, usually empty)", "zh": "路由标签（高级，通常留空）" },
+      "help": {
+        "en": "Sent as the SKRouteTag header when set",
+        "zh": "填写后作为 SKRouteTag 请求头发送"
+      }
+    },
+    {
+      "key": "max_media_size",
+      "type": "int",
+      "default": 104857600,
+      "label": { "en": "Max attachment size (bytes)", "zh": "附件大小上限（字节）" }
+    }
+  ]
+}
