@@ -1,6 +1,6 @@
 {
   "name": "@theopenbee/channel-weixin",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "WeChat channel plugin for openbee",
   "keywords": [
     "openbee",
