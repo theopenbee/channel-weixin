@@ -34,6 +34,8 @@ export class WeixinApiError extends Error {
   }
 }
 
+export class CdnFileTooLargeError extends WeixinApiError {}
+
 export interface ApiOptions {
   token: string;
   baseUrl: string;
@@ -220,14 +222,14 @@ export class WeixinApi {
     const declared = Number(res.headers.get("content-length") ?? "");
     if (declared > maxSize) {
       await res.body?.cancel();
-      throw new WeixinApiError(`cdn file too large (${declared} bytes, max ${maxSize})`);
+      throw new CdnFileTooLargeError(`cdn file too large (${declared} bytes, max ${maxSize})`);
     }
     const chunks: Buffer[] = [];
     let total = 0;
     if (res.body) {
       for await (const chunk of res.body) {
         total += chunk.length;
-        if (total > maxSize) throw new WeixinApiError(`cdn file too large (more than ${maxSize} bytes)`);
+        if (total > maxSize) throw new CdnFileTooLargeError(`cdn file too large (more than ${maxSize} bytes)`);
         chunks.push(Buffer.from(chunk));
       }
     }

@@ -10,7 +10,7 @@ import { encode } from "silk-wasm";
 import { createWeixinChannel } from "../dist/weixin.js";
 import { TOKEN, decrypt, startFakeWeixin } from "./fake-weixin.mjs";
 
-const FAST = { retryDelayMs: 5, slowRetryDelayMs: 10, stalePauseMs: 30, uploadRetryDelayMs: 1 };
+const FAST = { retryDelayMs: 5, slowRetryDelayMs: 10, stalePauseMs: 30, uploadRetryDelayMs: 1, downloadRetryDelayMs: 1 };
 const USER = "u1@im.wechat";
 const RAW = `{"from_user_id":"${USER}","to_user_id":"bot@im.bot","session_id":"s1","context_token":"ctx-1"}`;
 
@@ -69,10 +69,10 @@ function fakeContext(fake, config = {}, dirs = {}) {
   };
 }
 
-async function started(t, { updates = [], handlers = {}, config = {}, dirs } = {}) {
+async function started(t, { updates = [], handlers = {}, config = {}, dirs, timings = {} } = {}) {
   const fake = await startFakeWeixin({ updates, handlers });
   const env = fakeContext(fake, config, dirs);
-  const channel = createWeixinChannel(FAST);
+  const channel = createWeixinChannel({ ...FAST, ...timings });
   const handle = await channel.start(env.ctx);
   t.after(async () => {
     await handle.stop();
@@ -414,4 +414,80 @@ test("a rejected CDN upload is not retried", async (t) => {
 
 test("start rejects a missing token", async () => {
   await assert.rejects(async () => createWeixinChannel(FAST).start({ config: {} }), /token is required/);
+});
+
+const fileItem = (param, key) => ({ type: 4, file_item: { file_name: "a.txt", media: { encrypt_query_param: param, aes_key: key.toString("base64") } } });
+const cdnCalls = (fake) => fake.calls.items.filter((c) => c.path === "/cdn/download").length;
+const retryLogs = (logs) => logs.items.filter((l) => l.level === "warn" && l.message === "download media failed, retrying");
+const dropConnection = (req, res) => {
+  res.socket.destroy();
+  return true;
+};
+
+test("a dropped CDN download is retried until the file arrives", async (t) => {
+  let drops = 2;
+  const { fake, inbound, logs } = await started(t, {
+    handlers: { "/cdn/download": (req, res) => (drops-- > 0 ? dropConnection(req, res) : false) },
+  });
+  const key = fake.addFile("flaky", Buffer.from("payload"));
+  fake.pushUpdate(updates(userMessage({ item_list: [fileItem("flaky", key)] })));
+  const msg = await inbound.waitFor(() => true);
+  assert.equal(readFileSync(msg.attachments[0].path, "utf8"), "payload");
+  assert.equal(cdnCalls(fake), 3);
+  assert.equal(retryLogs(logs).length, 2);
+});
+
+test("a CDN server error is retried", async (t) => {
+  let failures = 1;
+  const { fake, inbound } = await started(t, {
+    handlers: {
+      "/cdn/download": (req, res) => {
+        if (failures-- <= 0) return false;
+        res.writeHead(502);
+        res.end();
+        return true;
+      },
+    },
+  });
+  const key = fake.addFile("flaky", Buffer.from("payload"));
+  fake.pushUpdate(updates(userMessage({ item_list: [fileItem("flaky", key)] })));
+  const msg = await inbound.waitFor(() => true);
+  assert.equal(readFileSync(msg.attachments[0].path, "utf8"), "payload");
+  assert.equal(cdnCalls(fake), 2);
+});
+
+test("a CDN download that keeps failing stops after three attempts", async (t) => {
+  const { fake, inbound } = await started(t, { handlers: { "/cdn/download": dropConnection } });
+  fake.pushUpdate(updates(userMessage({ item_list: [fileItem("down", randomBytes(16))] })));
+  const msg = await inbound.waitFor(() => true);
+  assert.deepEqual(msg.attachments, [{ type: "document", path: "", name: "a.txt" }]);
+  assert.equal(cdnCalls(fake), 3);
+});
+
+test("rejected and oversized CDN downloads are not retried", async (t) => {
+  const { fake, inbound, logs } = await started(t, {
+    config: { max_media_size: 8 },
+    handlers: {
+      "/cdn/download": (req, res, call) => {
+        if (call.query.encrypted_query_param !== "declared") return false;
+        res.writeHead(200, { "content-length": "32" });
+        res.end(Buffer.alloc(32));
+        return true;
+      },
+    },
+  });
+  const key = fake.addFile("streamed", Buffer.alloc(32));
+  fake.pushUpdate(updates(userMessage({ item_list: [fileItem("missing", key), fileItem("streamed", key), fileItem("declared", key)] })));
+  const msg = await inbound.waitFor(() => true);
+  assert.deepEqual(msg.attachments.map((a) => a.path), ["", "", ""]);
+  assert.equal(cdnCalls(fake), 3);
+  assert.equal(retryLogs(logs).length, 0);
+});
+
+test("stopping the channel cancels a pending CDN retry", async (t) => {
+  const { fake, handle, logs } = await started(t, { handlers: { "/cdn/download": dropConnection }, timings: { downloadRetryDelayMs: 60_000 } });
+  fake.pushUpdate(updates(userMessage({ item_list: [fileItem("down", randomBytes(16))] })));
+  await logs.waitFor((l) => l.message === "download media failed, retrying");
+  await handle.stop();
+  assert.equal(cdnCalls(fake), 1);
 });

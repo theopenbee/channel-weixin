@@ -4,7 +4,7 @@ import { basename, extname, join } from "node:path";
 
 import { ConfigError, type Attachment, type AttachmentType, type ChannelContext, type ChannelDefinition, type SendRequest } from "@theopenbee/channel-sdk";
 
-import { DEFAULT_BASE_URL, DEFAULT_CDN_BASE_URL, STALE_TOKEN, WeixinApi, WeixinApiError } from "./api.js";
+import { CdnFileTooLargeError, DEFAULT_BASE_URL, DEFAULT_CDN_BASE_URL, STALE_TOKEN, WeixinApi, WeixinApiError } from "./api.js";
 import { aesEcbPaddedSize, decryptAesEcb, encryptAesEcb, hexKeyToBase64, parseAesKey } from "./crypto.js";
 import {
   chunkText,
@@ -29,6 +29,7 @@ const CURSOR_FILE = "sync.json";
 const TICKET_TTL_MS = 24 * 60 * 60 * 1000;
 const TICKET_BACKOFF_MAX_MS = 60 * 60 * 1000;
 const UPLOAD_URL_ATTEMPTS = 3;
+const DOWNLOAD_ATTEMPTS = 3;
 
 export interface WeixinConfig {
   token: string;
@@ -43,6 +44,7 @@ export interface Timings {
   slowRetryDelayMs: number;
   stalePauseMs: number;
   uploadRetryDelayMs: number;
+  downloadRetryDelayMs: number;
 }
 
 const DEFAULT_TIMINGS: Timings = {
@@ -50,6 +52,7 @@ const DEFAULT_TIMINGS: Timings = {
   slowRetryDelayMs: 30_000,
   stalePauseMs: 60 * 60 * 1000,
   uploadRetryDelayMs: 2_000,
+  downloadRetryDelayMs: 500,
 };
 
 function stringValue(raw: Record<string, unknown>, key: string, fallback = ""): string {
@@ -145,6 +148,20 @@ export function createWeixinChannel(timings: Partial<Timings> = {}): ChannelDefi
     }
   };
 
+  const fetchFromCdn = async (ctx: ChannelContext, media: CdnMedia): Promise<Buffer> => {
+    let wait = t.downloadRetryDelayMs;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await api!.downloadFromCdn(media, cfg.maxMediaSize, background.signal);
+      } catch (err) {
+        if (background.signal.aborted || attempt >= DOWNLOAD_ATTEMPTS || err instanceof CdnFileTooLargeError || !retryable(err)) throw err;
+        ctx.log.warn("download media failed, retrying", { error: errorText(err) });
+      }
+      await sleep(wait, background.signal);
+      wait *= 2;
+    }
+  };
+
   const download = async (ctx: ChannelContext, media: CdnMedia | undefined, aesKey: string | undefined): Promise<Buffer | undefined> => {
     if (!media || (!media.encrypt_query_param && !media.full_url)) return undefined;
     if (!aesKey) {
@@ -152,7 +169,7 @@ export function createWeixinChannel(timings: Partial<Timings> = {}): ChannelDefi
       return undefined;
     }
     try {
-      const encrypted = await api!.downloadFromCdn(media, cfg.maxMediaSize, background.signal);
+      const encrypted = await fetchFromCdn(ctx, media);
       return decryptAesEcb(encrypted, parseAesKey(aesKey));
     } catch (err) {
       if (!background.signal.aborted) ctx.log.error("download media failed", { error: errorText(err) });
