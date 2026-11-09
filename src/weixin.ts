@@ -67,7 +67,7 @@ function intValue(raw: Record<string, unknown>, key: string, fallback = 0): numb
 
 export function readConfig(raw: Record<string, unknown>): WeixinConfig {
   const token = stringValue(raw, "token");
-  if (!token) throw new ConfigError("token is required; run openbee config to log in with a QR code");
+  if (!token) throw new ConfigError("token is required; log in with the QR code on the plugin page or run openbee plugin configure weixin");
   const routeTag = intValue(raw, "route_tag");
   return {
     token,
@@ -278,7 +278,7 @@ export function createWeixinChannel(timings: Partial<Timings> = {}): ChannelDefi
         continue;
       }
       if (resp.ret === STALE_TOKEN || resp.errcode === STALE_TOKEN) {
-        ctx.log.error("WeChat login expired; pausing for 60 minutes. Run openbee config and log in with a QR code again.", {
+        ctx.log.error("WeChat login expired; pausing for 60 minutes. Log in again with the QR code on the plugin page or run openbee plugin configure weixin.", {
           ret: resp.ret,
           errcode: resp.errcode,
         });

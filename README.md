@@ -4,17 +4,19 @@ WeChat (微信) channel for openbee, built on [`@theopenbee/channel-sdk`](https:
 
 ## Behaviour
 
-- Logs in with a QR code: `openbee config` runs the plugin's login step, which shows a QR code in the terminal. Scan it with WeChat and confirm on the phone; if WeChat shows a number, type it into the terminal. The token is written to `config.yaml`.
+- Logs in with a QR code, from the plugin page in the desktop app or the web console, or with `openbee plugin configure weixin` in the terminal. Scan it with WeChat and confirm on the phone; if WeChat shows a number, type it in. The token is saved in the plugin settings.
 - Long polling, so openbee needs no public address. The sync cursor is kept in the plugin data directory, so a restart continues where it stopped.
 - Handles one-on-one chats with the bot; group messages are ignored. One openbee session per user (`weixin:<user_id>:<user_id>`), the same keys the built-in channel used.
 - Text, pictures, voice messages, files and videos up to `max_media_size` bytes are downloaded and decrypted into openbee's media directory. Voice messages are converted from SILK to WAV, and WeChat's transcript becomes the message text.
 - A typing indicator is shown when a message arrives.
 - Replies longer than 4000 characters are split, preferring line breaks. Text is sent first, then the file. Pictures (`.jpg` `.png` `.gif` `.webp` `.bmp`) and videos (`.mp4` `.mov` `.webm`…) are sent as such, anything else as a file.
 - WeChat accepts at most 10 bot messages after each message from the user, scheduled results and split parts included. Further sends fail with `ret=-2 errmsg=prepare failed` until the user writes again.
-- When WeChat reports the login as expired, polling pauses for an hour. Run `openbee config` and log in again to get a new token.
+- When WeChat reports the login as expired, polling pauses for an hour. Log in again from the plugin page or with `openbee plugin configure weixin` to get a new token.
 - HTTP proxy variables are not used.
 
 ## Install
+
+Install it from **Settings → Plugins → Marketplace**, or run:
 
 ```sh
 openbee plugin install @theopenbee/channel-weixin
@@ -29,16 +31,9 @@ npm install
 openbee plugin install "$(pwd)"
 ```
 
-Then run `openbee config`, select WeChat and scan the QR code. When the section already has a token, `openbee config` asks whether to log in again. A config written for the built-in channel works unchanged:
+Then log in with the **WeChat QR code login** on the plugin page, or run `openbee plugin configure weixin` and scan the code in the terminal, and enable the plugin. Setup guide: https://theopenbee.com/docs/chat-apps/weixin/
 
-```yaml
-bee:
-  platforms:
-    weixin:
-      enabled: true
-      bot_name: OpenBee
-      token: "<bot token>"
-```
+Settings, also accepted as `openbee plugin configure weixin --set key=value`:
 
 | Key | Default | |
 |---|---|---|
