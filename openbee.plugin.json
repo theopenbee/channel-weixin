@@ -4,6 +4,7 @@
   "name": { "en": "WeChat", "zh": "微信" },
   "description": { "en": "WeChat bot channel, logged in with a QR code", "zh": "微信机器人渠道，扫码登录" },
   "command": ["node", "dist/index.js"],
+  "icon": "icon.svg",
   "setup": {
     "command": ["node", "dist/setup.js"],
     "label": { "en": "WeChat QR code login", "zh": "微信扫码登录" }
